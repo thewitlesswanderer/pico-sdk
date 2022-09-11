@@ -95,6 +95,9 @@ typedef pio_hw_t *PIO;
 
 /** \brief PIO Configuration structure
  *  \ingroup sm_config
+ *
+ * This structure is an in-memory representation of the configuration that can be applied to a PIO
+ * state machine later using pio_sm_set_config() or pio_sm_init().
  */
 typedef struct {
     uint32_t clkdiv;
@@ -815,7 +818,7 @@ static inline bool pio_interrupt_get(PIO pio, uint pio_interrupt_num) {
 static inline void pio_interrupt_clear(PIO pio, uint pio_interrupt_num) {
     check_pio_param(pio);
     invalid_params_if(PIO, pio_interrupt_num >= 8);
-    hw_set_bits(&pio->irq, (1u << pio_interrupt_num));
+    pio->irq = (1u << pio_interrupt_num);
 }
 
 /*! \brief Return the current program counter for a state machine
@@ -902,7 +905,7 @@ static inline void pio_sm_set_wrap(PIO pio, uint sm, uint wrap_target, uint wrap
 }
 
 /*! \brief Set the current 'out' pins for a state machine
- *  \ingroup sm_config
+ *  \ingroup hardware_pio
  *
  * Can overlap with the 'in', 'set' and 'sideset' pins
  *
@@ -923,7 +926,7 @@ static inline void pio_sm_set_out_pins(PIO pio, uint sm, uint out_base, uint out
 
 
 /*! \brief Set the current 'set' pins for a state machine
- *  \ingroup sm_config
+ *  \ingroup hardware_pio
  *
  * Can overlap with the 'in', 'out' and 'sideset' pins
  *
@@ -943,7 +946,7 @@ static inline void pio_sm_set_set_pins(PIO pio, uint sm, uint set_base, uint set
 }
 
 /*! \brief Set the current 'in' pins for a state machine
- *  \ingroup sm_config
+ *  \ingroup hardware_pio
  *
  * Can overlap with the 'out', 'set' and 'sideset' pins
  *
@@ -960,7 +963,7 @@ static inline void pio_sm_set_in_pins(PIO pio, uint sm, uint in_base) {
 }
 
 /*! \brief Set the current 'sideset' pins for a state machine
- *  \ingroup sm_config
+ *  \ingroup hardware_pio
  *
  * Can overlap with the 'in', 'out' and 'set' pins
  *
