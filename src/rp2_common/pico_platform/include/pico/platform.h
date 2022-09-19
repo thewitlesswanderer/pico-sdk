@@ -17,6 +17,8 @@
  */
 
 #include "hardware/platform_defs.h"
+#include "hardware/regs/addressmap.h"
+#include "hardware/regs/sio.h"
 
 // Marker for builds targeting the RP2040
 #define PICO_RP2040 1
@@ -334,7 +336,10 @@ uint8_t rp2040_chip_version(void);
  * @return the RP2040 rom version number (1 for RP2040-B0, 2 for RP2040-B1, 3 for RP2040-B2)
  */
 static inline uint8_t rp2040_rom_version(void) {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Warray-bounds"
     return *(uint8_t*)0x13;
+#pragma GCC diagnostic pop
 }
 
 /*! \brief No-op function for the body of tight loops
@@ -405,12 +410,12 @@ uint __get_current_exception(void);
  *
  * This method is useful for introducing very short delays.
  *
- * This method busy-waits in a tight loop for the give number of system clock cycles. The total wait time is only accurate to within 2 cycles,
+ * This method busy-waits in a tight loop for the given number of system clock cycles. The total wait time is only accurate to within 2 cycles,
  * and this method uses a loop counter rather than a hardware timer, so the method will always take longer than expected if an
- * interrupt is handled on the calling core when during the busy-wait; you can of course disable interrupts to prevent this.
+ * interrupt is handled on the calling core during the busy-wait; you can of course disable interrupts to prevent this.
  *
- * You can use \ref clock_get_hz(clk_sys) to determine the number of clock cycles per second if you want to convert to cycles
- * from an actual time duration.
+ * You can use \ref clock_get_hz(clk_sys) to determine the number of clock cycles per second if you want to convert an actual
+ * time duration to a number of cycles.
  *
  * \param minimum_cycles the minimum number of system clock cycles to delay for
  */
@@ -421,6 +426,15 @@ static inline void busy_wait_at_least_cycles(uint32_t minimum_cycles) {
         "bcs 1b\n"
         : "+r" (minimum_cycles) : : "memory"
     );
+}
+
+/*! \brief Get the current core number
+ *  \ingroup pico_platform
+ *
+ * \return The core number the call was made from
+ */
+__force_inline static uint get_core_num(void) {
+    return (*(uint32_t *) (SIO_BASE + SIO_CPUID_OFFSET));
 }
 
 #else // __ASSEMBLER__

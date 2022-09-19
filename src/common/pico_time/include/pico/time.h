@@ -95,8 +95,9 @@ static inline absolute_time_t delayed_by_us(const absolute_time_t t, uint64_t us
     absolute_time_t t2;
     uint64_t base = to_us_since_boot(t);
     uint64_t delayed = base + us;
-    if (delayed < base) {
-        delayed = (uint64_t)-1;
+    if ((int64_t)delayed < 0) {
+        // absolute_time_t (to allow for signed time deltas) is never greater than INT64_MAX which == at_the_end_of_time
+        delayed = INT64_MAX;
     }
     update_us_since_boot(&t2, delayed);
     return t2;
@@ -113,8 +114,9 @@ static inline absolute_time_t delayed_by_ms(const absolute_time_t t, uint32_t ms
     absolute_time_t t2;
     uint64_t base = to_us_since_boot(t);
     uint64_t delayed = base + ms * 1000ull;
-    if (delayed < base) {
-        delayed = (uint64_t)-1;
+    if ((int64_t)delayed < 0) {
+        // absolute_time_t (to allow for signed time deltas) is never greater than INT64_MAX which == at_the_end_of_time
+        delayed = INT64_MAX;
     }
     update_us_since_boot(&t2, delayed);
     return t2;
@@ -198,7 +200,7 @@ static inline bool is_nil_time(absolute_time_t t) {
  * \note  These functions should not be called from an IRQ handler.
  *
  * \note  Lower powered sleep requires use of the \link alarm_pool_get_default default alarm pool\endlink which may
- * be disabled by the #PICO_TIME_DEFAULT_ALARM_POOL_DISABLED define or currently full in which case these functions
+ * be disabled by the PICO_TIME_DEFAULT_ALARM_POOL_DISABLED #define or currently full in which case these functions
  * become busy waits instead.
  *
  * \note  Whilst \a sleep_ functions are preferable to \a busy_wait functions from a power perspective, the \a busy_wait equivalent function
@@ -402,6 +404,14 @@ alarm_pool_t *alarm_pool_create(uint hardware_alarm_num, uint max_timers);
  * \return the hardware alarm used by the pool
  */
 uint alarm_pool_hardware_alarm_num(alarm_pool_t *pool);
+
+/**
+ * \brief Return the core number the alarm pool was initialized on (and hence callbacks are called on)
+ * \ingroup alarm
+ * \param pool the pool
+ * \return the core used by the pool
+ */
+uint alarm_pool_core_num(alarm_pool_t *pool);
 
 /**
  * \brief Destroy the alarm pool, cancelling all alarms and freeing up the underlying hardware alarm

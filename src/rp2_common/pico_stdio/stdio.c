@@ -9,13 +9,15 @@
 #include <stdarg.h>
 
 #include "pico.h"
-#include "pico/mutex.h"
 #if LIB_PICO_PRINTF_PICO
 #include "pico/printf.h"
 #endif
 #include "pico/stdio.h"
 #include "pico/stdio/driver.h"
 #include "pico/time.h"
+#if PICO_STDOUT_MUTEX
+#include "pico/mutex.h"
+#endif
 
 #if LIB_PICO_STDIO_UART
 #include "pico/stdio_uart.h"
@@ -28,6 +30,10 @@
 #if LIB_PICO_STDIO_SEMIHOSTING
 #include "pico/stdio_semihosting.h"
 #endif
+
+#define STDIO_HANDLE_STDIN  0
+#define STDIO_HANDLE_STDOUT 1
+#define STDIO_HANDLE_STDERR 2
 
 static stdio_driver_t *drivers;
 static stdio_driver_t *filter;
@@ -131,11 +137,13 @@ static int stdio_get_until(char *buf, int len, absolute_time_t until) {
                 }
             }
         }
+        if (time_reached(until)) {
+            return PICO_ERROR_TIMEOUT;
+        }
         // we sleep here in case the in_chars methods acquire mutexes or disable IRQs and
         // potentially starve out what they are waiting on (have seen this with USB)
         busy_wait_us(1);
-    } while (!time_reached(until));
-    return PICO_ERROR_TIMEOUT;
+    } while (true);
 }
 
 int WRAPPER_FUNC(putchar)(int c) {
@@ -165,14 +173,14 @@ int puts_raw(const char *s) {
 }
 
 int _read(int handle, char *buffer, int length) {
-    if (handle == 0) {
+    if (handle == STDIO_HANDLE_STDIN) {
         return stdio_get_until(buffer, length, at_the_end_of_time);
     }
     return -1;
 }
 
 int _write(int handle, char *buffer, int length) {
-    if (handle == 1) {
+    if (handle == STDIO_HANDLE_STDOUT || handle == STDIO_HANDLE_STDERR) {
         stdio_put_string(buffer, length, false, false);
         return length;
     }
@@ -261,20 +269,25 @@ int __printflike(1, 0) WRAPPER_FUNC(printf)(const char* format, ...)
     return ret;
 }
 
-void stdio_init_all(void) {
+bool stdio_init_all(void) {
     // todo add explicit custom, or registered although you can call stdio_enable_driver explicitly anyway
     // These are well known ones
+
+    bool rc = false;
 #if LIB_PICO_STDIO_UART
     stdio_uart_init();
+    rc = true;
 #endif
 
 #if LIB_PICO_STDIO_SEMIHOSTING
     stdio_semihosting_init();
+    rc = true;
 #endif
 
 #if LIB_PICO_STDIO_USB
-    stdio_usb_init();
+    rc |= stdio_usb_init();
 #endif
+    return rc;
 }
 
 int WRAPPER_FUNC(getchar)(void) {
@@ -304,6 +317,10 @@ void stdio_set_translate_crlf(stdio_driver_t *driver, bool enabled) {
     }
     driver->crlf_enabled = enabled;
 #else
+    // Suppress -Wunused-parameter
+    (void)driver;
+    (void)enabled;
+    
     panic_unsupported();
 #endif
 }
