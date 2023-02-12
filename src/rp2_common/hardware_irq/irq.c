@@ -15,7 +15,17 @@
 
 extern void __unhandled_user_irq(void);
 
+#if PICO_VTABLE_PER_CORE
 static uint8_t user_irq_claimed[NUM_CORES];
+static inline uint8_t *user_irq_claimed_ptr(void) {
+    return &user_irq_claimed[get_core_num()];
+}
+#else
+static uint8_t user_irq_claimed;
+static inline uint8_t *user_irq_claimed_ptr(void) {
+    return &user_irq_claimed;
+}
+#endif
 
 static inline irq_handler_t *get_vtable(void) {
     return (irq_handler_t *) scb_hw->vtor;
@@ -31,7 +41,7 @@ static inline void *remove_thumb_bit(void *addr) {
 
 static void set_raw_irq_handler_and_unlock(uint num, irq_handler_t handler, uint32_t save) {
     // update vtable (vtable_handler may be same or updated depending on cases, but we do it anyway for compactness)
-    get_vtable()[16 + num] = handler;
+    get_vtable()[VTABLE_FIRST_IRQ + num] = handler;
     __dmb();
     spin_unlock(spin_lock_instance(PICO_SPINLOCK_ID_IRQ), save);
 }
@@ -296,7 +306,7 @@ void irq_remove_handler(uint num, irq_handler_t handler) {
             // Sadly this is not something we can detect.
 
             uint exception = __get_current_exception();
-            hard_assert(!exception || exception == num + 16);
+            hard_assert(!exception || exception == num + VTABLE_FIRST_IRQ);
 
             struct irq_handler_chain_slot *prev_slot = NULL;
             struct irq_handler_chain_slot *existing_vtable_slot = remove_thumb_bit(vtable_handler);
@@ -425,8 +435,6 @@ void irq_init_priorities() {
 #endif
 }
 
-#define FIRST_USER_IRQ (NUM_IRQS - NUM_USER_IRQS)
-
 static uint get_user_irq_claim_index(uint irq_num) {
     invalid_params_if(IRQ, irq_num < FIRST_USER_IRQ || irq_num >= NUM_IRQS);
     // we count backwards from the last, to match the existing hard coded uses of user IRQs in the SDK which were previously using 31
@@ -435,20 +443,20 @@ static uint get_user_irq_claim_index(uint irq_num) {
 }
 
 void user_irq_claim(uint irq_num) {
-    hw_claim_or_assert(&user_irq_claimed[get_core_num()], get_user_irq_claim_index(irq_num), "User IRQ is already claimed");
+    hw_claim_or_assert(user_irq_claimed_ptr(), get_user_irq_claim_index(irq_num), "User IRQ is already claimed");
 }
 
 void user_irq_unclaim(uint irq_num) {
-    hw_claim_clear(&user_irq_claimed[get_core_num()], get_user_irq_claim_index(irq_num));
+    hw_claim_clear(user_irq_claimed_ptr(), get_user_irq_claim_index(irq_num));
 }
 
 int user_irq_claim_unused(bool required) {
-    int bit = hw_claim_unused_from_range(&user_irq_claimed[get_core_num()], required, 0, NUM_USER_IRQS - 1, "No user IRQs are available");
+    int bit = hw_claim_unused_from_range(user_irq_claimed_ptr(), required, 0, NUM_USER_IRQS - 1, "No user IRQs are available");
     if (bit >= 0) bit =  (int)NUM_IRQS - bit - 1;
     return bit;
 }
 
 bool user_irq_is_claimed(uint irq_num) {
-    return hw_is_claimed(&user_irq_claimed[get_core_num()], get_user_irq_claim_index(irq_num));
+    return hw_is_claimed(user_irq_claimed_ptr(), get_user_irq_claim_index(irq_num));
 }
 
